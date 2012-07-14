@@ -2,11 +2,15 @@
 
 module Data.Expr where
 
+import Prelude hiding (foldl);
 import Control.Applicative;
 import Control.Arrow;
+import Control.Category.Unicode;
+import Control.Monad.Gen.Class;
 import Data.Foldable;
-import Data.List as List;
-import Data.Map  as Map;
+import qualified Data.List as List;
+import qualified Data.Map  as Map;
+import Data.Map (Map);
 import Data.R;
 import Data.RFunctor;
 
@@ -36,6 +40,13 @@ data Constructor b = C [Type b] (Type b)
 
 cType :: Constructor b -> Type b;
 cType (C argus final) = List.foldr (-->) final argus;
+
+mkCTuple :: (Functor m, MonadGen b m) => Int -> m (Constructor b);
+mkCTuple n = (\ vs ->
+              C (Var <$> vs) (foldl Ply (Constructor $
+                                         C (take n ∘ repeat $
+                                            Constructor CStar) (Constructor CStar)) (Var <$> vs))) <$>
+             (sequence ∘ take n ∘ repeat) gen;
 
 data Literal = LInteger Integer
              | LFloat Double

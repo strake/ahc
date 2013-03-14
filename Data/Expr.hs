@@ -23,7 +23,7 @@ data Expr b = Literal Literal
             | Let (Map b (Expr b)) (Expr b)
             | Note (Type b) (Expr b)             -- Type annotation
             | Constructor (Constructor b)
-  deriving Eq;
+  deriving (Eq, Show);
 
 data Match b = MatchStruct b [Match b]
              | MatchLiteral Literal
@@ -31,12 +31,12 @@ data Match b = MatchStruct b [Match b]
              | MatchLazy (Match b)
              | MatchAs b (Match b)
              | MatchNote (Type b) (Match b)
-  deriving Eq;
+  deriving (Eq, Show);
 
 data Constructor b = C [Type b] (Type b)
                    | CStar
                    | CArrow
-  deriving Eq;
+  deriving (Eq, Show);
 
 cType :: Constructor b -> Type b;
 cType (C argus final) = List.foldr (-->) final argus;

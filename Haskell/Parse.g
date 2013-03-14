@@ -154,15 +154,6 @@ decls		{% let {
 		         tsnd = Map.keysSet tm Set.\\ Map.keysSet dm;
 		       };
 
-                     distribLWith :: Functor v => (a -> b -> c) -> v a -> b -> v c;
-		     distribLWith = flip ∘ distribRWith ∘ flip;
-		     
-		     distribRWith :: Functor v => (a -> b -> c) -> a -> v b -> v c;
-		     distribRWith f x yv = f x <$> yv;
-		     
-		     distribL :: Functor v => v a -> b -> v (a, b);
-		     distribL = distribLWith (,);
-
 		     fs :: [(HsName, (Fixity, Rational))];
 		     f_tds :: PT Fixed ([(HsName, Expr HsName)], [(HsName, Expr HsName)]);
 		     (fs, f_tds) = let {

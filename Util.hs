@@ -43,3 +43,15 @@ whileJust mmx f = mmx >>= maybe (return []) (f >=> flip fmap (whileJust mmx f) �
 infixr 9 &;
 (&) :: (a -> b) -> (b -> c) -> (a -> c);
 (&) = flip (∘);
+
+distribLWith :: Functor v => (a -> b -> c) -> v a -> b -> v c;
+distribLWith = flip ∘ distribRWith ∘ flip;
+
+distribRWith :: Functor v => (a -> b -> c) -> a -> v b -> v c;
+distribRWith f x yv = f x <$> yv;
+
+distribL :: Functor v => v a -> b -> v (a, b);
+distribL = distribLWith (,);
+
+distribR :: Functor v => a -> v b -> v (a, b);
+distribR = distribRWith (,);

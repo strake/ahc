@@ -23,6 +23,7 @@ data Expr b = Literal Literal
             | Let (Map b (Expr b)) (Expr b)
             | Note (Type b) (Expr b)             -- Type annotation
             | Constructor (Constructor b)
+            | ForAll b (Expr b)
   deriving (Eq, Show);
 
 data Match b = MatchStruct b [Match b]

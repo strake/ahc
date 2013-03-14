@@ -31,3 +31,15 @@ infixr 3 <&&>;
 list :: (a -> [a] -> b) -> b -> [a] -> b;
 list f y []     = y;
 list f y (x:xs) = f x xs;
+
+infix 1 ?;
+(?) :: Bool -> a -> a -> a;
+True  ? x = const x;
+False ? _ = id;
+
+whileJust :: (Functor m, Monad m) => m (Maybe a) -> (a -> m b) -> m [b];
+whileJust mmx f = mmx >>= maybe (return []) (f >=> flip fmap (whileJust mmx f) ∘ (:));
+
+infixr 9 &;
+(&) :: (a -> b) -> (b -> c) -> (a -> c);
+(&) = flip (∘);

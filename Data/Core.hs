@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeFamilies #-}
 
-module Data.Expr where
+module Data.Core where
 
 import Prelude hiding (foldl);
 import Control.Applicative;

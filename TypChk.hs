@@ -6,7 +6,7 @@ import Control.Applicative;
 import Control.Arrow;
 import Control.Category.Unicode;
 import Control.Monad;
-import Data.Expr;
+import Data.Core;
 import Data.Fallible;
 import Data.Foldable;
 import Data.Foldable.Unicode;

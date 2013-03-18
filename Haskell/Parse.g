@@ -29,6 +29,7 @@ import Data.Map (Map);
 import qualified Data.Map as Map;
 import Data.Set (Set);
 import qualified Data.Set as Set;
+import Data.Maybe;
 import Util;
 
 %{
@@ -204,12 +205,12 @@ lmatch		{ m }								: amatch { m };
 amatch		{ PT Fixed (Match HsName) };
 amatch		{ return $ MatchAny }						: "_";
 		{ return $ MatchLiteral l }					| literal { l };
-		{ MatchAs v <$> fromMaybe (return MatchAny) m_m }		| termvar { v }, opt as { m_m };
-		{ ms >>= \ ms ->
+		{ MatchAs (Just TermName, Q [] v) <$>
+		  fromMaybe (return MatchAny) m_m }				| termvar { v }, opt as { m_m };
+		{ ms >>= \ ms -> return $
 		  case ms of {
-		    []  -> return (MatchStruct (C [] (Constructor (C [] (Constructor CStar)))) ms);
-		    [m] -> return m;
-		     ms -> liftA2 MatchStruct (mkCTuple (length ms)) (sequence ms);
+		    [m] -> m;
+		     _  -> MatchStruct (Just TermName, Q [] (':' : show (length ms)) {- not legal Haskell name, so safe -}) ms;
 		  }
 		}								| '(', sepBy match ',' { sequence -> ms }, ')';
 

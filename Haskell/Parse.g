@@ -119,6 +119,7 @@ infixexpr_	{ \ ops -> ask >>= \ fm ->
 λexpr		{ PT Fixed (Expr HsName) };
 λexpr		{ x }								: fexpr { x };
 		{ liftA2 Let ds (local (Map.union fm) x) }			| "let", '{', decls { (fm, ds) }, '}', "in", expr { x };
+		{ liftA2 (foldr (\ m x -> Λ [(m, x)])) x ms }			| "\\", many amatch { sequence -> ms }, "->", expr { x };
 
 fexpr		{ PT Fixed (Expr HsName) };
 fexpr		{ maybe id (liftA2 Ply) m_f x }					: opt fexpr { m_f }, aexpr { x };

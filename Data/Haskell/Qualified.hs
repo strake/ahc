@@ -11,5 +11,5 @@ data Q b = Q [b] b
 instance IsString b => IsString (Q b) where { fromString = Q [] ∘ fromString; };
 
 instance Show (Q [Char]) where {
-  show (Q ms n) = List.intercalate "." $ show <$> ms ++ [n];
+  show (Q ms n) = List.intercalate "." $ ms ++ [n];
 };

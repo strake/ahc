@@ -127,13 +127,7 @@ fexpr		{ maybe id (liftA2 Ply) m_f x }					: opt fexpr { m_f }, aexpr { x };
 aexpr		{ PT Fixed (Expr HsName) };
 aexpr		{ return $ Var (Just TermName, v) }				: qvar { v };
 		{ return $ Literal l }						| literal { l };
-		{ xs >>= \ xs ->
-		  case xs of {
-		    [ ] -> return (Constructor (C [] (Constructor (C [] (Constructor CStar))))); -- ()
-		    [x] -> return x;
-		     xs -> flip (foldl' Ply) xs ∘ Constructor <$> mkCTuple (length xs);
-		  }
-		}								| '(', sepBy expr ',' { sequence -> xs }, ')';
+		{ stlist id Tuple <$> xs }					| '(', sepBy expr ',' { sequence -> xs }, ')';
 		{ Ply (Var (Just TermName, v)) <$> x }				| '(', expr { x }, qop { v }, ')';
 		{% gen >>= \ u -> return $
 		   (\ x ->
@@ -208,12 +202,7 @@ amatch		{ return $ MatchAny }						: "_";
 		{ return $ MatchLiteral l }					| literal { l };
 		{ MatchAs (Just TermName, Q [] v) <$>
 		  fromMaybe (return MatchAny) m_m }				| termvar { v }, opt as { m_m };
-		{ ms >>= \ ms -> return $
-		  case ms of {
-		    [m] -> m;
-		     _  -> MatchStruct (Just TermName, Q [] (':' : show (length ms)) {- not legal Haskell name, so safe -}) ms;
-		  }
-		}								| '(', sepBy match ',' { sequence -> ms }, ')';
+		{ stlist id MatchTuple <$> ms }					| '(', sepBy match ',' { sequence -> ms }, ')';
 
 as		{ PT Fixed (Match HsName) };
 as		{ m }							: "@", amatch { m };
@@ -291,3 +280,7 @@ failHere = fail;
 instance (Functor m, Monad m) => MonadGen HsName (PT m) where {
   gen = (,) Nothing ∘ Q [] <$> (gets psGenSt <* modify (\ ps -> ps { psGenSt = 'a':psGenSt ps }));
 };
+
+stlist :: (a -> b) -> ([a] -> b) -> [a] -> b;
+stlist f g [x] = f x;
+stlist f g  xs = g xs;

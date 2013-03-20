@@ -57,6 +57,7 @@ findType γ x = Work
 
 freeVars :: (Ord b) => Expr b -> Set b;
 freeVars (Literal _)     = Set.empty;
+freeVars (Tuple xs)      = Set.unions $ freeVars <$> xs;
 freeVars (Var v)         = Set.singleton v;
 freeVars (Λ cs)          = Set.unions $ (boundVars *** freeVars >>> uncurry (flip Set.difference)) <$> cs;
 freeVars (Ply f x)       = freeVars f `Set.union` freeVars x;
@@ -66,6 +67,7 @@ freeVars (ForAll v x)    = Set.delete v (freeVars x);
 
 boundVars :: (Ord b) => Match b -> Set b;
 boundVars (MatchStruct c ms) = Set.unions $ boundVars <$> ms;
+boundVars (MatchTuple ms)    = Set.unions $ boundVars <$> ms;
 boundVars (MatchLiteral _)   = Set.empty;
 boundVars (MatchAny)         = Set.empty;
 boundVars (MatchLazy m)      = boundVars m;

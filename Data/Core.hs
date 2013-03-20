@@ -17,6 +17,7 @@ import Data.RFunctor;
 type Type b = Expr b;
 
 data Expr b = Literal Literal
+            | Tuple [Expr b]
             | Var b
             | Λ [(Match b, Expr b)]
             | Ply (Expr b) (Expr b)              -- Function application
@@ -26,7 +27,8 @@ data Expr b = Literal Literal
             | ForAll b (Expr b)
   deriving (Eq, Show);
 
-data Match b = MatchStruct b [Match b]
+data Match b = MatchStruct (Constructor b) [Match b]
+             | MatchTuple [Match b]
              | MatchLiteral Literal
              | MatchAny
              | MatchLazy (Match b)
@@ -34,20 +36,13 @@ data Match b = MatchStruct b [Match b]
              | MatchNote (Type b) (Match b)
   deriving (Eq, Show);
 
-data Constructor b = C [Type b] (Type b)
+data Constructor b = C b [Type b] (Type b)
                    | CStar
                    | CArrow
   deriving (Eq, Show);
 
 cType :: Constructor b -> Type b;
-cType (C argus final) = List.foldr (-->) final argus;
-
-mkCTuple :: (Functor m, MonadGen b m) => Int -> m (Constructor b);
-mkCTuple n = (\ vs ->
-              C (Var <$> vs) (foldl Ply (Constructor $
-                                         C (take n ∘ repeat $
-                                            Constructor CStar) (Constructor CStar)) (Var <$> vs))) <$>
-             (sequence ∘ take n ∘ repeat) gen;
+cType (C _ argus final) = List.foldr (-->) final argus;
 
 data Literal = LInteger Integer
              | LFloat Double
@@ -72,6 +67,7 @@ instance R Constructor where {
 
 instance RFunctor Expr where {
   φ `rfmap` Literal l = Literal l;
+  φ `rfmap` Tuple xs = Tuple (rfmap φ <$> xs);
   φ `rfmap` Var v = Var (φ v);
   φ `rfmap` Λ ms = Λ ((rfmap φ *** rfmap φ) <$> ms);
   φ `rfmap` Ply f x = Ply (φ <$!> f) (φ <$!> x);
@@ -81,7 +77,8 @@ instance RFunctor Expr where {
 };
 
 instance RFunctor Match where {
-  φ `rfmap` MatchStruct c ms = MatchStruct (φ c) (rfmap φ <$> ms);
+  φ `rfmap` MatchTuple ms = MatchTuple (rfmap φ <$> ms);
+  φ `rfmap` MatchStruct c ms = MatchStruct (rfmap φ c) (rfmap φ <$> ms);
   φ `rfmap` MatchLiteral l = MatchLiteral l;
   φ `rfmap` MatchAny = MatchAny;
   φ `rfmap` MatchLazy m = MatchLazy (φ <$!> m);
@@ -90,7 +87,7 @@ instance RFunctor Match where {
 };
 
 instance RFunctor Constructor where {
-  φ `rfmap` C as x = C (rfmap φ <$> as) (φ <$!> x);
+  φ `rfmap` C name as x = C (φ name) (rfmap φ <$> as) (φ <$!> x);
   φ `rfmap` CStar = CStar;
   φ `rfmap` CArrow = CArrow;
 };

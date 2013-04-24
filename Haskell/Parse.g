@@ -120,6 +120,10 @@ infixexpr_	{ \ ops -> ask >>= \ fm ->
 λexpr		{ x }								: fexpr { x };
 		{ liftA2 Let ds (local (Map.union fm) x) }			| "let", '{', decls { (fm, ds) }, '}', "in", expr { x };
 		{ liftA2 (foldr (\ m x -> Λ [(m, x)])) x ms }			| "\\", many amatch { sequence -> ms }, "->", expr { x };
+		{ liftA2 Ply (Λ <$> sequence as) x }				| "case", expr { x }, "of", '{', sepEndBy alt ';' { as }, '}';
+
+alt		{ PT Fixed (Match HsName, Expr HsName) };
+alt		{ liftA2 (,) m x }						: match { m }, "->", expr { x };
 
 fexpr		{ PT Fixed (Expr HsName) };
 fexpr		{ maybe id (liftA2 Ply) m_f x }					: opt fexpr { m_f }, aexpr { x };

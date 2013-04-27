@@ -5,6 +5,7 @@ import Control.Arrow;
 import Control.Category.Unicode;
 import Control.Monad;
 import Control.Monad.Instances;
+import Data.List (partition);
 
 infixr 3 &=&;
 (&=&) :: Monad m => (a -> m b) -> (a -> m c) -> a -> m (b, c);
@@ -55,3 +56,18 @@ distribL = distribLWith (,);
 
 distribR :: Functor v => a -> v b -> v (a, b);
 distribR = distribRWith (,);
+
+factorizeLBy :: (a -> a -> Bool) -> [(a, b)] -> [(a, [b])];
+factorizeLBy (==) = list (\ (u, v) -> partition ((== u) ∘ fst) >>> fmap snd & (,) u *** factorizeLBy (==) >>> uncurry (:)) [];
+
+factorizeRBy :: (b -> b -> Bool) -> [(a, b)] -> [([a], b)];
+factorizeRBy (==) = fmap swap ∘ factorizeLBy (==) ∘ fmap swap;
+
+factorizeL :: Eq a => [(a, b)] -> [(a, [b])];
+factorizeL = factorizeLBy (==);
+
+factorizeR :: Eq b => [(a, b)] -> [([a], b)];
+factorizeR = factorizeRBy (==);
+
+swap :: (a, b) -> (b, a);
+swap (x, y) = (y, x);

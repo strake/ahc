@@ -1,7 +1,6 @@
 module Data.RFunctor where
 
 import Control.Category.Unicode;
-import Data.Map as Map;
 import Data.R;
 import GHC.Prim (Constraint);
 

@@ -8,12 +8,12 @@ import Control.Monad.Instances;
 import Data.List (partition);
 
 infixr 3 &=&;
-(&=&) :: Monad m => (a -> m b) -> (a -> m c) -> a -> m (b, c);
-f &=& g = (liftM2 ∘ liftM2) (,) f g;
+(&=&) :: Applicative p => (a -> p b) -> (a -> p c) -> a -> p (b, c);
+f &=& g = (liftA2 ∘ liftA2) (,) f g;
 
 infixr 3 *=*;
-(*=*) :: Monad m => (a1 -> m b1) -> (a2 -> m b2) -> (a1, a2) -> m (b1, b2);
-(f *=* g) (x, y) = liftM2 (,) (f x) (g y);
+(*=*) :: Applicative p => (a1 -> p b1) -> (a2 -> p b2) -> (a1, a2) -> p (b1, b2);
+(f *=* g) (x, y) = liftA2 (,) (f x) (g y);
 
 tripleA :: Arrow a => a b1 c1 -> a b2 c2 -> a b3 c3 -> a (b1, b2, b3) (c1, c2, c3);
 tripleA f g h = arr (\ (x, y, z) -> (x, (y, z))) >>> f *** g *** h >>> arr (\ (x, (y, z)) -> (x, y, z));

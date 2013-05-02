@@ -67,7 +67,7 @@ scanFrom p = tmap (flip evalStateT p) lift ∘ unLexerT (whileJust scan1M return
 
 -- scan next token
 -- yield Nothing at end of file
-scan1M :: ∀ m . Monad m => LexerT (FailureT ScanFailure (StateT TextPos m)) (Maybe Token);
+scan1M :: ∀ m . (Applicative m, Monad m) => LexerT (FailureT ScanFailure (StateT TextPos m)) (Maybe Token);
 scan1M =
   LexerT $ \ (k :: Maybe Token -> [Char] -> FailureT ScanFailure (StateT TextPos m) b) ->
   let {

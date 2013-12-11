@@ -15,6 +15,9 @@ infixr 3 *=*;
 (*=*) :: Applicative p => (a1 -> p b1) -> (a2 -> p b2) -> (a1, a2) -> p (b1, b2);
 (f *=* g) (x, y) = liftA2 (,) (f x) (g y);
 
+tripleK :: Applicative p => (a1 -> p b1) -> (a2 -> p b2) -> (a3 -> p b3) -> (a1, a2, a3) -> p (b1, b2, b3);
+tripleK f g h (x, y, z) = liftA3 (,,) (f x) (g y) (h z);
+
 tripleA :: Arrow a => a b1 c1 -> a b2 c2 -> a b3 c3 -> a (b1, b2, b3) (c1, c2, c3);
 tripleA f g h = arr (\ (x, y, z) -> (x, (y, z))) >>> f *** g *** h >>> arr (\ (x, (y, z)) -> (x, y, z));
 
@@ -71,3 +74,6 @@ factorizeR = factorizeRBy (==);
 
 swap :: (a, b) -> (b, a);
 swap (x, y) = (y, x);
+
+infixr 9 ∘∘;
+f ∘∘ g = (f ∘) ∘ g;

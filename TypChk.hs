@@ -1,107 +1,92 @@
 module TypChk where
 
-import Prelude hiding (foldr, lookup, concat, concatMap, fail, mapM, sequence);
+import Prelude hiding (foldr, fail);
 
 import Control.Applicative;
 import Control.Arrow;
 import Control.Category.Unicode;
-import Control.Monad hiding (fail, mapM, sequence);
-import Control.Monad.Failure.Class;
+import Control.Monad hiding (fail);
+import Control.Monad.Error.Class;
 import Control.Monad.Gen.Class;
+import Control.Monad.Reader.Class;
+import Control.Monad.Writer.Class;
 import Data.Core;
-import Data.Eq.Unicode;
 import Data.Foldable;
 import Data.Foldable.Unicode;
-import Data.Traversable;
-import Data.Maybe (fromMaybe);
-import Data.Map as Map hiding (foldr);
-import Data.Set as Set hiding (foldr);
+import Data.Map (Map);
+import qualified Data.Map as Map;
+import Data.Maybe;
+import Data.Monoid;
 import Data.RFunctor;
+import Data.Set (Set);
+import qualified Data.Set as Set;
+import Data.Traversable;
 import Util;
+import qualified Util.Map as Map;
 
-type Ψ b = Map b (Expr b);
-type Γ b = Map b (Δ b, Expr b); -- polymorphic type environment
-type Δ b = Map b (Expr b); -- monomorphic type environment
-type Σ b = [(Expr b, Expr b)]; -- type equations
+data TFailure b = TUnboundVar b | TMismatch (Type b) (Type b) deriving (Show);
 
-(/.) :: (Ord b) => Expr b -> Ψ b -> Expr b;
-Var v         /. ψ = fromMaybe (Var v) (lookup v ψ);
-Λ cs          /. ψ = Λ ((\ (m, x) -> (m, x /. foldr Map.delete ψ (boundVars m))) <$> cs);
-Ply f x       /. ψ = Ply (f /. ψ) (x /. ψ);
-Let bs x      /. ψ = error "type-level let";
-Note t x      /. ψ = Note t (x /. ψ);
-Constructor c /. ψ = Constructor c;
-ForAll v x    /. ψ = ForAll v (x /. Map.delete v ψ);
+instance Error (TFailure b) where {};
 
-unify :: (Ord b, Applicative m, MonadFailure [TypChkFailure b] m) => Σ b -> m (Ψ b);
-unify [] = return Map.empty;
-unify ((Var u, Var v):σ) | u == v = unify σ;
-unify ((Var u, y):σ)
-  | u ∈ freeVars y = liftA2 Map.union (fail [InfiniteTypeFailure u y]) (unify σ)
-  | otherwise = let {
-      ψ = Map.singleton u y;
-    } in Map.union ψ <$> fmap (/. ψ) <$> unify σ
-  ;
-unify ((x, Var v):σ) = unify ((Var v, x):σ);
-unify ((Ply f x, Ply g y):σ) = unify ((f, g):(x, y):σ);
-unify ((Constructor c1, Constructor c2):σ)
-  | c1 == c2  = unify σ
-  | otherwise = liftA2 Map.union (fail [TypeMismatchFailure (Constructor c1) (Constructor c2)]) (unify σ)
-  ;
-unify ((x, y):σ) = liftA2 Map.union (fail [TypeMismatchFailure x y]) (unify σ);
+data TR b = TR {
+  r_env :: Map b (Type b),
+  r_svs :: Set b -- specific type variables
+};
 
-δσ :: (Ord b, Applicative m, MonadGen b m) => [Δ b] -> m (Σ b);
-δσ = traverse (Map.assocs & traverse (const (Var <$> gen) *=* return)) & fmap concat;
+r_onEnv :: (Map b (Type b) -> Map b (Type b)) -> TR b -> TR b;
+r_onEnv f tr@(TR { r_env = env }) = tr { r_env = f env };
 
-freshen :: (Ord b, Functor m, Foldable v, MonadGen b' m) => v b -> m (Map b (Expr b'));
-freshen = foldr (Map.insert & flip fmap (Var <$> gen) & ap) (return Map.empty);
+r_onSvs :: (Set b -> Set b) -> TR b -> TR b;
+r_onSvs f tr@(TR { r_svs = svs }) = tr { r_svs = f svs };
 
--- Dr. Gergõ Érdi's algorithm, given in "Compositional Type Checking"
-findTermType :: (Ord b, Applicative m, MonadFailure [TypChkFailure b] m, MonadGen b m) => Γ b -> Expr b -> m (Δ b, Expr b);
-findTermType γ (Ply f x) =
-  join $
-  liftA3
-  (\ (δf, tf) (δx, tx) ty ->
-   (\ ψ -> (Map.unions $ fmap (/. ψ) <$> [δf, δx], ty /. ψ)) <$>
-   ((:) (tf, tx --> ty) <$> δσ [δf, δx] >>= unify))
-  (findTermType γ f) (findTermType γ x) (Var <$> gen);
-findTermType γ (Λ cs) =
-  traverse (findMatchType *=* findTermType γ) cs >>= \ δtδts ->
-  join (liftA2 (,)) (Var <$> gen) >>= \ (α, τ0) ->
-  (liftA2 ∘ liftA2) (++)
-  (concatMap (sequence [fst ∘ fst, fst ∘ snd]) & δσ)
-  (fmap (snd & (,) τ0 *** snd & (,) α) >>> unzip >>> uncurry (++) >>> return)
-  δtδts >>= unify >>= \ ψ ->
-  return (fmap (fst *** fst >>> fmap (/. ψ) *** id >>> uncurry Map.difference) & Map.unions $ δtδts, (τ0 /. ψ) --> (α /. ψ));
-findTermType γ (Constructor (C _ ts t)) =
-  (freshen ∘ Set.unions) (freeVars <$> t:ts) >>= \ ψ ->
-  return (Map.empty, foldr (-->) (t /. ψ) ((/. ψ) <$> ts));
-findTermType γ (Var v) =
-  maybe ((Var >>> Map.singleton v &&& id) <$> gen) (\ (δ, t) -> fmap (\ ψ -> ((/. ψ) <$> δ, t /. ψ)) ∘ freshen ∘ Set.unions ∘ fmap freeVars $ t : Map.elems δ) (Map.lookup v γ);
-findTermType γ (Let bm y) =
-  Map.mapWithKey (\ v -> Map.delete v *** id) <$> traverse (findTermType γ) bm >>= \ γ0 ->
-  findTermType γ0 y >>= \ (δ, t) ->
-  let { δs = δ : Map.elems (fst <$> γ0); } in
-  (δσ >=> unify) δs >>= \ ψ ->
-  return (Map.unions $ fmap (/. ψ) <$> δs, t /. ψ);
-findTermType γ (Note t x) =
-  (Map.empty, t) <$ (findTermType γ x >>= pure & δσ *=* (,) t & pure & return >>= unify ∘ uncurry (++));
+data TW b = TW {
+  w_eqn :: [(Type b, Type b)]
+} deriving (Show);
 
-findMatchType :: (Ord b, Applicative m, MonadFailure [TypChkFailure b] m, MonadGen b m) => Match b -> m (Δ b, Expr b);
-findMatchType (MatchStruct c@(C _ ts t) ms)
-  | length ts ≠ length ms = fail [MissaturatedConstructorFailure c (length ms)]
-  | otherwise =
-      unzip <$> traverse findMatchType ms >>= \ (δs, ss) ->
-      (++ zip ss ts) <$> δσ δs >>= unify >>= \ ψ ->
-      liftA2 (,) (δσ >=> unify $ fmap (/. ψ) <$> δs) (pure $ t /. ψ);
-findMatchType (MatchStruct _ ms) = fail [(const :: a -> a -> a) InalgebraicTypeFailure (TypeMismatchFailure undefined $ (\ (MatchAs v _) -> Var v) (head ms))];
-findMatchType (MatchTuple ms) = unzip <$> traverse findMatchType ms >>= \ (δs, ts) ->
-                                δσ δs >>= unify >>= \ ψ ->
-                                liftA2 (,) (δσ >=> unify $ fmap (/. ψ) <$> δs) (pure $ Tuple ts);
-findMatchType (MatchAny)      = (,) Map.empty ∘ Var <$> gen;
-findMatchType (MatchAs v m)   = (\ (δ, t) -> (Map.insert v t δ, t)) <$> findMatchType m;
-findMatchType (MatchLazy m)   = findMatchType m;
-findMatchType (MatchNote t m) = (Map.empty, t) <$ (findMatchType m >>= pure & δσ *=* (,) t & pure & return >>= unify ∘ uncurry (++));
+instance Monoid (TW b) where {
+  mempty = TW [];
+  TW xs `mappend` TW ys = TW (xs ++ ys);
+};
+
+-- Generated type variables must be suffix-free, i.e. ∀ x y z | (y, z) generated . x <> y ≠ z
+
+infer :: ∀ m b . (Ord b, Monoid b, Applicative m, MonadError (TFailure b) m, MonadGen b m, MonadReader (TR b) m, MonadWriter (TW b) m) => Expr b -> m (Type b);
+infer (Note t x) = infer x >>= unify t;
+infer (Var v)    = asks (Map.lookup v ∘ r_env) >>= maybe (fail (TUnboundVar v)) freshen;
+infer (Tuple xs) = Tuple <$> traverse infer xs;
+infer (Λ cs)     = traverse (\ (m, x) -> inferM m >>= \ (env, svs, tm) ->
+                             (,) tm <$> local ((r_onEnv $ Map.union env) ∘ (r_onSvs $ Set.union svs)) (infer x)) >=>
+                   fmap (uncurry (-->)) ∘ join (*=*) ((Var <$> gen >>=) ∘ flip (foldrM unify)) ∘ unzip $ cs;
+infer (Ply f x)  = liftA2 (,) (infer f) (liftA2 (-->) (infer x) (Var <$> gen)) >>= uncurry unify;
+infer (Let bm x) = traverse (const gen) bm >>= \ fvm {- fresh variable map -} ->
+                   local (r_onEnv $ Map.union (Var <$> fvm)) $
+                   local (r_onSvs $ Set.union (foldMap Set.singleton fvm)) (traverse infer bm >>= Map.unionWithA unify (Var <$> fvm)) >>= \ env ->
+                   local (r_onEnv $ Map.union env) (infer x);
+infer (Constructor (C v)) = infer (Var v);
+
+-- Matches must be linear by now
+inferM :: ∀ m b . (Ord b, Monoid b, Applicative m, MonadError (TFailure b) m, MonadGen b m, MonadReader (TR b) m, MonadWriter (TW b) m) => Match b -> m (Map b (Type b) {- types of bound vars -}, Set b {- specific type vars -}, Type b);
+inferM (MatchNote s m)    = inferM m >>= \ (env, svs, t) -> (,,) env svs <$> unify s t;
+inferM (MatchAs v m)      = (\ (env, svs, t) -> (Map.insert v t env, svs, t)) <$> inferM m;
+inferM (MatchAny)         = splitA3 (const Map.empty) Set.singleton Var <$> gen;
+inferM (MatchTuple ms)    = unzip3 & tripleA Map.unions Set.unions Tuple <$> traverse inferM ms;
+inferM (MatchLazy m)      = inferM m;
+inferM (MatchStruct w ms) = asks (Map.lookup w ∘ r_env) >>= maybe (fail (TUnboundVar w)) freshen >>= \ t -> gen >>= \ v ->
+                            traverse inferM ms >>= unzip3 & tripleK (return ∘ Map.unions) (return ∘ Set.insert v ∘ Set.unions) ((Var v <$) ∘ unify t ∘ foldr (-->) (Var v));
+
+unify :: (MonadWriter (TW b) m) => Type b -> Type b -> m (Type b);
+unify s t = tell (TW [(s, t)]) >> return s; -- lazy method (^_^)
+
+freshen :: (Ord b, Monoid b, Applicative m, MonadGen b m, MonadReader (TR b) m, MonadWriter (TW b) m) => Type b -> m (Type b);
+freshen = ap (asks r_svs >>= \ svs -> gen >>= \ u -> return $ rfmap (join $ \ v -> v ∈ svs ? id $ (<> u))) ∘ return;
+
+findUnifier :: ∀ m b . (Ord b, Applicative m, MonadError (TFailure b) m, MonadReader (TR b) m) => [(Type b, Type b)] -> m (Map b (Type b));
+findUnifier [] = return Map.empty;
+findUnifier ((x, y):eqns) | x == y    = findUnifier eqns;
+findUnifier ((Ply f x, Ply g y):eqns) = findUnifier ((f, g):(x, y):eqns);
+findUnifier ((Ply f x, Var v):eqns)   = findUnifier ((Var v, Ply f x):eqns);
+findUnifier ((Var v, x):eqns) | v ∉ freeVars x = Map.insert v x <$> findUnifier (join (***) (/. Map.singleton v x) <$> eqns);
+findUnifier ((x, y):eqns) = fail (TMismatch x y);
 
 freeVars :: (Ord b) => Expr b -> Set b;
 freeVars (Literal _)     = Set.empty;
@@ -122,8 +107,13 @@ boundVars (MatchLazy m)      = boundVars m;
 boundVars (MatchAs b m)      = Set.insert b (boundVars m);
 boundVars (MatchNote _ m)    = boundVars m;
 
-data TypChkFailure b = InfiniteTypeFailure b (Expr b)
-                     | TypeMismatchFailure (Expr b) (Expr b)
-                     | MissaturatedConstructorFailure (Constructor b) Int
-                     | InalgebraicTypeFailure
-                     ;
+(/.) :: (Ord b) => Expr b -> Map b (Expr b) -> Expr b;
+Var v         /. ψ = fromMaybe (Var v) (Map.lookup v ψ);
+Λ cs          /. ψ = Λ ((\ (m, x) -> (m, x /. foldr Map.delete ψ (boundVars m))) <$> cs);
+Ply f x       /. ψ = Ply (f /. ψ) (x /. ψ);
+Let bs x      /. ψ = error "type-level let";
+Note t x      /. ψ = Note t (x /. ψ);
+Constructor c /. ψ = Constructor c;
+ForAll v x    /. ψ = ForAll v (x /. Map.delete v ψ);
+
+fail = throwError;

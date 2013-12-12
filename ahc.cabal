@@ -7,5 +7,5 @@ Executable ahc {
   Build-Depends: base, base-unicode-symbols, containers, array, regex-applicative, mmtl, FailureT, Stream, ghc-prim
   Main-Is: Main.hs
   Other-Modules: Data.Core, Data.R, Data.RFunctor, Control.Monad.Gen.Class, TypChk, Haskell.Lex, Haskell.Parse, Data.Fixity, Data.Haskell.NameSpace, Data.Haskell.Qualified, Data.Haskell.Token, Util
-  Extensions: UnicodeSyntax, OverloadedStrings, PatternGuards, NoMonomorphismRestriction, LiberalTypeSynonyms, RankNTypes, ScopedTypeVariables, TypeOperators, MultiParamTypeClasses, FlexibleContexts, FlexibleInstances, UndecidableInstances, EmptyDataDecls, GADTs, DeriveFunctor, ConstraintKinds, GeneralizedNewtypeDeriving
+  Extensions: UnicodeSyntax, OverloadedStrings, PatternGuards, NoMonomorphismRestriction, LiberalTypeSynonyms, RankNTypes, ScopedTypeVariables, TypeOperators, MultiParamTypeClasses, FlexibleContexts, FlexibleInstances, UndecidableInstances, IncoherentInstances, EmptyDataDecls, GADTs, DeriveFunctor, ConstraintKinds, GeneralizedNewtypeDeriving
 }

@@ -17,5 +17,5 @@ instance MonadGen b m => MonadGen (b, b) m where {
 };
 
 instance (Applicative m, MonadState (Stream b) m) => MonadGen b m where {
-  gen = state $ \ (Cons x xs) -> (x, xs);
+  gen = get >>= \ (Cons x xs) -> put xs >> return x;
 };

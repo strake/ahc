@@ -48,7 +48,7 @@ data Literal = LInteger Integer
   deriving (Eq, Show);
 
 (-->) :: Expr b -> Expr b -> Expr b;
-x --> y = Ply (Ply (Constructor CArrow) x) x;
+x --> y = Ply (Ply (Constructor CArrow) x) y;
 
 instance R Expr where {
   type C Expr b = Ord b;

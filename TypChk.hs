@@ -30,7 +30,8 @@ instance Error (TFailure b) where {};
 
 data TR b = TR {
   r_env :: Map b (Type b),
-  r_svs :: Set b -- specific type variables
+  r_svs :: Set b, -- specific type variables
+  r_typeLiteral :: Literal -> Type b
 };
 
 r_onEnv :: (Map b (Type b) -> Map b (Type b)) -> TR b -> TR b;
@@ -61,6 +62,7 @@ infer (Let bm x) = traverse (const gen) bm >>= \ fvm {- fresh variable map -} ->
                    local (r_onSvs $ Set.union (foldMap Set.singleton fvm)) (traverse infer bm >>= Map.unionWithA unify (Var <$> fvm)) >>= \ env ->
                    local (r_onEnv $ Map.union env) (infer x);
 infer (Constructor (C v)) = infer (Var v);
+infer (Literal l) = asks (flip r_typeLiteral l);
 
 -- Matches must be linear by now
 inferM :: ∀ m b . (Ord b, Applicative m, MonadError (TFailure b) m, MonadGen b m, MonadReader (TR b) m, MonadWriter (TW b) m) => Match b -> m (Map b (Type b) {- types of bound vars -}, Set b {- specific type vars -}, Type b);
@@ -71,6 +73,7 @@ inferM (MatchTuple ms)    = unzip3 & tripleA Map.unions Set.unions Tuple <$> tra
 inferM (MatchLazy m)      = inferM m;
 inferM (MatchStruct w ms) = asks (Map.lookup w ∘ r_env) >>= maybe (fail (TUnboundVar w)) freshen >>= \ t -> gen >>= \ v ->
                             traverse inferM ms >>= unzip3 & tripleK (return ∘ Map.unions) (return ∘ Set.insert v ∘ Set.unions) ((Var v <$) ∘ unify t ∘ foldr (-->) (Var v));
+inferM (MatchLiteral l)   = asks ((,,) Map.empty Set.empty ∘ flip r_typeLiteral l);
 
 unify :: (MonadWriter (TW b) m) => Type b -> Type b -> m (Type b);
 unify s t = tell (TW [(s, t)]) >> return s; -- lazy method (^_^)

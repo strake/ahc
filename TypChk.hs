@@ -1,11 +1,11 @@
 module TypChk where
 
-import Prelude hiding (foldr, fail);
+import Prelude hiding (foldr, fail, sequence);
 
 import Control.Applicative;
 import Control.Arrow;
 import Control.Category.Unicode;
-import Control.Monad hiding (fail);
+import Control.Monad hiding (fail, sequence);
 import Control.Monad.Error.Class;
 import Control.Monad.Gen.Class;
 import Control.Monad.Reader.Class;
@@ -48,9 +48,7 @@ instance Monoid (TW b) where {
   TW xs `mappend` TW ys = TW (xs ++ ys);
 };
 
--- Generated type variables must be suffix-free, i.e. ∀ x y z | (y, z) generated . x <> y ≠ z
-
-infer :: ∀ m b . (Ord b, Monoid b, Applicative m, MonadError (TFailure b) m, MonadGen b m, MonadReader (TR b) m, MonadWriter (TW b) m) => Expr b -> m (Type b);
+infer :: ∀ m b . (Ord b, Applicative m, MonadError (TFailure b) m, MonadGen b m, MonadReader (TR b) m, MonadWriter (TW b) m) => Expr b -> m (Type b);
 infer (Note t x) = infer x >>= unify t;
 infer (Var v)    = asks (Map.lookup v ∘ r_env) >>= maybe (fail (TUnboundVar v)) freshen;
 infer (Tuple xs) = Tuple <$> traverse infer xs;
@@ -65,7 +63,7 @@ infer (Let bm x) = traverse (const gen) bm >>= \ fvm {- fresh variable map -} ->
 infer (Constructor (C v)) = infer (Var v);
 
 -- Matches must be linear by now
-inferM :: ∀ m b . (Ord b, Monoid b, Applicative m, MonadError (TFailure b) m, MonadGen b m, MonadReader (TR b) m, MonadWriter (TW b) m) => Match b -> m (Map b (Type b) {- types of bound vars -}, Set b {- specific type vars -}, Type b);
+inferM :: ∀ m b . (Ord b, Applicative m, MonadError (TFailure b) m, MonadGen b m, MonadReader (TR b) m, MonadWriter (TW b) m) => Match b -> m (Map b (Type b) {- types of bound vars -}, Set b {- specific type vars -}, Type b);
 inferM (MatchNote s m)    = inferM m >>= \ (env, svs, t) -> (,,) env svs <$> unify s t;
 inferM (MatchAs v m)      = (\ (env, svs, t) -> (Map.insert v t env, svs, t)) <$> inferM m;
 inferM (MatchAny)         = splitA3 (const Map.empty) Set.singleton Var <$> gen;
@@ -77,8 +75,10 @@ inferM (MatchStruct w ms) = asks (Map.lookup w ∘ r_env) >>= maybe (fail (TUnbo
 unify :: (MonadWriter (TW b) m) => Type b -> Type b -> m (Type b);
 unify s t = tell (TW [(s, t)]) >> return s; -- lazy method (^_^)
 
-freshen :: (Ord b, Monoid b, Applicative m, MonadGen b m, MonadReader (TR b) m, MonadWriter (TW b) m) => Type b -> m (Type b);
-freshen = ap (asks r_svs >>= \ svs -> gen >>= \ u -> return $ rfmap (join $ \ v -> v ∈ svs ? id $ (<> u))) ∘ return;
+freshen :: (Ord b, Applicative m, MonadGen b m, MonadReader (TR b) m, MonadWriter (TW b) m) => Type b -> m (Type b);
+freshen t = asks r_svs >>= \ svs ->
+  (\ fvm -> rfmap (join $ flip Map.lookup fvm & maybe id const) t) <$>
+  (Set.toAscList & zipWith (flip $ fmap ∘ (,)) (repeat gen) & sequence & fmap Map.fromAscList) (freeVars t `Set.difference` svs);
 
 findUnifier :: ∀ m b . (Ord b, Applicative m, MonadError (TFailure b) m, MonadReader (TR b) m) => [(Type b, Type b)] -> m (Map b (Type b));
 findUnifier [] = return Map.empty;

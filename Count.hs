@@ -12,6 +12,3 @@ countl xs = (pure <$> xs) ++> zipWith (++) (cycle (pure <$> xs)) (concatMap (tak
 
 countr :: [a] -> Stream [a];
 countr xs = (pure <$> xs) ++> zipWith (++) (concatMap (take (length xs) ∘ repeat) (countr xs)) (cycle (pure <$> xs));
-
-suffixFree :: a -> [a] -> [a];
-suffixFree x xs = xs ++ take (length xs - 1) (repeat x);

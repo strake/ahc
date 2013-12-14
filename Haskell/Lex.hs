@@ -4,15 +4,13 @@
 
 module Haskell.Lex where
 
-import Prelude hiding (elem, foldr, foldr1, sum, concat, fail);
+import Prelude hiding (elem, foldr, foldr1, sum, concat);
 import Control.Applicative;
 import Control.Arrow;
 import Control.Category.Unicode;
-import Control.Monad hiding (fail);
-import Control.Monad.Failure;
-import Control.Monad.Reader hiding (fail);
-import Control.Monad.State  hiding (fail);
-import Control.Monad.Trans;
+import Control.Monad;
+import Control.Monatron.AutoLift;
+import Control.Monatron.Transformer;
 import Data.Bits;
 import Data.Char;
 import Data.Eq.Unicode;
@@ -28,24 +26,16 @@ import Data.Tagged;
 import Data.Text.Pos;
 import Text.Regex.Applicative;
 import Util;
+import Util.Monatron;
 
 newtype LexerT m a = LexerT (∀ b . (a -> [Char] -> m b) -> [Char] -> m b);
 
 unLexerT :: LexerT m a -> (a -> [Char] -> m b) -> [Char] -> m b;
 unLexerT (LexerT l) = l;
 
-instance Functor m => Functor (LexerT m) where {
-  fmap φ (LexerT x) = LexerT (x ∘ (∘ φ));
-};
-
-instance Monad m => Monad (LexerT m) where {
-  return v = LexerT ($ v);
-  LexerT l >>= f = LexerT (\ k -> l (flip unLexerT k ∘ f));
-};
-
-instance MonadTrans LexerT where {
+instance MonadT LexerT where {
   lift my = LexerT (\ k xs -> my >>= \ y -> k y xs);
-  tmap f g (LexerT l) = LexerT (\ k -> f ∘ l (\ y -> g ∘ k y));
+  tbind (LexerT l) f = LexerT (\ k -> l (flip unLexerT k ∘ f));
 };
 
 data ScanFailure = ScanFailMsg TextPos [Char];
@@ -54,24 +44,24 @@ instance Show ScanFailure where {
   show (ScanFailMsg p s) = "Scan Failure at " ++ show p ++ ": " ++ s;
 };
 
-failHere :: (Functor m, MonadFailure ScanFailure m, MonadState TextPos m) => [Char] -> m a;
-failHere xs = get >>= \ p -> fail (ScanFailMsg p xs);
+failHere :: (Functor m, ExcM ScanFailure m, StateM TextPos m) => [Char] -> m a;
+failHere xs = get >>= \ p -> throw (ScanFailMsg p xs);
 
 data Block = Pragma | Comment deriving Eq;
 
-scan :: (Applicative m, Monad m) => [Char] -> FailureT ScanFailure m [Token];
+scan :: (Applicative m, Monad m) => [Char] -> ExcT ScanFailure m [Token];
 scan = scanFrom 0;
 
-scanFrom :: (Applicative m, Monad m) => TextPos -> [Char] -> FailureT ScanFailure m [Token];
-scanFrom p = tmap (flip evalStateT p) lift ∘ unLexerT (whileJust scan1M return) (const ∘ return);
+scanFrom :: (Applicative m, Monad m) => TextPos -> [Char] -> ExcT ScanFailure m [Token];
+scanFrom p = tmap (evalStateT p) ∘ unLexerT (whileJust scan1M return) (const ∘ return);
 
 -- scan next token
 -- yield Nothing at end of file
-scan1M :: ∀ m . (Applicative m, Monad m) => LexerT (FailureT ScanFailure (StateT TextPos m)) (Maybe Token);
+scan1M :: ∀ m . (Applicative m, Monad m) => LexerT (ExcT ScanFailure (StateT TextPos m)) (Maybe Token);
 scan1M =
-  LexerT $ \ (k :: Maybe Token -> [Char] -> FailureT ScanFailure (StateT TextPos m) b) ->
+  LexerT $ \ (k :: Maybe Token -> [Char] -> ExcT ScanFailure (StateT TextPos m) b) ->
   let {
-    scan' :: [Block] -> [Char] -> FailureT ScanFailure (StateT TextPos m) b;
+    scan' :: [Block] -> [Char] -> ExcT ScanFailure (StateT TextPos m) b;
     scan' bs = fromJust ∘ findLongestPrefix (concat <$> many reSpace) >>> (modify ∘ flip (foldr displ)) *=* return >=> \ ((), xs) ->
       case (bs, xs) of {
         ([], []) -> k Nothing ""; -- normal termination

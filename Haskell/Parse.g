@@ -2,16 +2,15 @@
 
 module Haskell.Parse where
 
-import Prelude hiding (fail, foldr, sequence);
+import Prelude hiding (foldr, sequence);
 import Control.Applicative;
 import Control.Arrow;
 import Control.Category.Unicode;
-import Control.Monad hiding (fail, sequence);
-import Control.Monad.Failure;
+import Control.Monad hiding (sequence);
 import Control.Monad.Gen.Class;
-import Control.Monad.Identity hiding (fail, sequence);
-import Control.Monad.Reader hiding (fail, sequence);
-import Control.Monad.State hiding (fail, sequence);
+import Control.Monatron.AutoLift hiding (sequence);
+import Control.Monatron.Monad;
+import Control.Monatron.Transformer hiding (sequence);
 import Data.Either;
 import Data.Eq.Unicode;
 import Data.Ord.Unicode;
@@ -30,6 +29,7 @@ import qualified Data.Map as Map;
 import Data.Set (Set);
 import qualified Data.Set as Set;
 import Data.Maybe;
+import Data.Stream;
 import Util;
 
 %{
@@ -257,21 +257,17 @@ type Arity = Int;
 
 type HsName = (Maybe NameSpace, Q [Char]);
 
-data PSt = PSt {
-  psGenSt :: [Char]
-};
+type PSt = Stream HsName;
 
 type FixMap = Map HsName (Fixity, Rational);
 
 type FixedT = ReaderT FixMap;
 
-type Fixed = FixedT I;
+type Fixed = FixedT Id;
 
-type PT m = FailureT ParseFailure (StateT PSt m);
+type PT m = ExcT ParseFailure (StateT PSt m);
 
-type P = PT I;
-
-type I = Identity;
+type P = PT Id;
 
 data ParseFailure = ParseFailMsg [Char];
 
@@ -279,11 +275,7 @@ instance Show ParseFailure where {
   show (ParseFailMsg s) = "Parse Failure: " ++ s;
 };
 
-failHere = fail;
-
-instance (Functor m, Monad m) => MonadGen HsName (PT m) where {
-  gen = (,) Nothing ∘ Q [] <$> (gets psGenSt <* modify (\ ps -> ps { psGenSt = 'a':psGenSt ps }));
-};
+failHere = throw;
 
 stlist :: (a -> b) -> ([a] -> b) -> [a] -> b;
 stlist f g [x] = f x;

@@ -1,15 +1,14 @@
 module TypChk where
 
-import Prelude hiding (foldr, fail, sequence);
+import Prelude hiding (foldr, sequence);
 
 import Control.Applicative;
 import Control.Arrow;
 import Control.Category.Unicode;
-import Control.Monad hiding (fail, sequence);
-import Control.Monad.Error.Class;
+import Control.Monad hiding (sequence);
+import Control.Monatron.AutoLift hiding (sequence);
+import Control.Monatron.Transformer hiding (sequence);
 import Control.Monad.Gen.Class;
-import Control.Monad.Reader.Class;
-import Control.Monad.Writer.Class;
 import Data.Core;
 import Data.Foldable;
 import Data.Foldable.Unicode;
@@ -23,10 +22,9 @@ import qualified Data.Set as Set;
 import Data.Traversable;
 import Util;
 import qualified Util.Map as Map;
+import Util.Monatron;
 
 data TFailure b = TUnboundVar b | TMismatch (Type b) (Type b) deriving (Show);
-
-instance Error (TFailure b) where {};
 
 data TR b = TR {
   r_env :: Map b (Type b),
@@ -49,9 +47,9 @@ instance Monoid (TW b) where {
   TW xs `mappend` TW ys = TW (xs ++ ys);
 };
 
-infer :: ∀ m b . (Ord b, Applicative m, MonadError (TFailure b) m, MonadGen b m, MonadReader (TR b) m, MonadWriter (TW b) m) => Expr b -> m (Type b);
+infer :: ∀ m b . (Ord b, Applicative m, ExcM (TFailure b) m, MonadGen b m, ReaderM (TR b) m, WriterM (TW b) m) => Expr b -> m (Type b);
 infer (Note t x) = infer x >>= unify t;
-infer (Var v)    = asks (Map.lookup v ∘ r_env) >>= maybe (fail (TUnboundVar v)) freshen;
+infer (Var v)    = Map.lookup v ∘ r_env <$> ask >>= maybe (throw (TUnboundVar v)) freshen;
 infer (Tuple xs) = Tuple <$> traverse infer xs;
 infer (Λ cs)     = traverse (\ (m, x) -> inferM m >>= \ (env, svs, t) ->
                              (t -->) <$> local ((r_onEnv $ Map.union env) ∘ (r_onSvs $ Set.union svs)) (infer x)) cs >>= list (foldrM unify) (error "empty λ");
@@ -61,34 +59,34 @@ infer (Let bm x) = traverse (const gen) bm >>= \ fvm {- fresh variable map -} ->
                    local (r_onSvs $ Set.union (foldMap Set.singleton fvm)) (traverse infer bm >>= Map.unionWithA unify (Var <$> fvm)) >>= \ env ->
                    local (r_onEnv $ Map.union env) (infer x);
 infer (Constructor (C v)) = infer (Var v);
-infer (Literal l) = asks (flip r_typeLiteral l);
+infer (Literal l) = flip r_typeLiteral l <$> ask;
 
 -- Matches must be linear by now
-inferM :: ∀ m b . (Ord b, Applicative m, MonadError (TFailure b) m, MonadGen b m, MonadReader (TR b) m, MonadWriter (TW b) m) => Match b -> m (Map b (Type b) {- types of bound vars -}, Set b {- specific type vars -}, Type b);
+inferM :: ∀ m b . (Ord b, Applicative m, ExcM (TFailure b) m, MonadGen b m, ReaderM (TR b) m, WriterM (TW b) m) => Match b -> m (Map b (Type b) {- types of bound vars -}, Set b {- specific type vars -}, Type b);
 inferM (MatchNote s m)    = inferM m >>= \ (env, svs, t) -> (,,) env svs <$> unify s t;
 inferM (MatchAs v m)      = (\ (env, svs, t) -> (Map.insert v t env, svs, t)) <$> inferM m;
 inferM (MatchAny)         = splitA3 (const Map.empty) Set.singleton Var <$> gen;
 inferM (MatchTuple ms)    = unzip3 & tripleA Map.unions Set.unions Tuple <$> traverse inferM ms;
 inferM (MatchLazy m)      = inferM m;
-inferM (MatchStruct w ms) = asks (Map.lookup w ∘ r_env) >>= maybe (fail (TUnboundVar w)) freshen >>= \ t -> gen >>= \ v ->
+inferM (MatchStruct w ms) = Map.lookup w ∘ r_env <$> ask >>= maybe (throw (TUnboundVar w)) freshen >>= \ t -> gen >>= \ v ->
                             traverse inferM ms >>= unzip3 & tripleK (return ∘ Map.unions) (return ∘ Set.insert v ∘ Set.unions) ((Var v <$) ∘ unify t ∘ foldr (-->) (Var v));
-inferM (MatchLiteral l)   = asks ((,,) Map.empty Set.empty ∘ flip r_typeLiteral l);
+inferM (MatchLiteral l)   = (,,) Map.empty Set.empty ∘ flip r_typeLiteral l <$> ask;
 
-unify :: (MonadWriter (TW b) m) => Type b -> Type b -> m (Type b);
+unify :: (WriterM (TW b) m) => Type b -> Type b -> m (Type b);
 unify s t = tell (TW [(s, t)]) >> return s; -- lazy method (^_^)
 
-freshen :: (Ord b, Applicative m, MonadGen b m, MonadReader (TR b) m, MonadWriter (TW b) m) => Type b -> m (Type b);
-freshen t = asks r_svs >>= \ svs ->
+freshen :: (Ord b, Applicative m, MonadGen b m, ReaderM (TR b) m, WriterM (TW b) m) => Type b -> m (Type b);
+freshen t = r_svs <$> ask >>= \ svs ->
   (\ fvm -> rfmap (join $ flip Map.lookup fvm & maybe id const) t) <$>
   (Set.toAscList & zipWith (flip $ fmap ∘ (,)) (repeat gen) & sequence & fmap Map.fromAscList) (freeVars t `Set.difference` svs);
 
-findUnifier :: ∀ m b . (Ord b, Applicative m, MonadError (TFailure b) m, MonadReader (TR b) m) => [(Type b, Type b)] -> m (Map b (Type b));
+findUnifier :: ∀ m b . (Ord b, Applicative m, ExcM (TFailure b) m, ReaderM (TR b) m) => [(Type b, Type b)] -> m (Map b (Type b));
 findUnifier [] = return Map.empty;
 findUnifier ((x, y):eqns) | x == y    = findUnifier eqns;
 findUnifier ((Ply f x, Ply g y):eqns) = findUnifier ((f, g):(x, y):eqns);
 findUnifier ((Ply f x, Var v):eqns)   = findUnifier ((Var v, Ply f x):eqns);
 findUnifier ((Var v, x):eqns) | v ∉ freeVars x = Map.insert v x <$> findUnifier (join (***) (/. Map.singleton v x) <$> eqns);
-findUnifier ((x, y):eqns) = fail (TMismatch x y);
+findUnifier ((x, y):eqns) = throw (TMismatch x y);
 
 freeVars :: (Ord b) => Expr b -> Set b;
 freeVars (Literal _)     = Set.empty;
@@ -117,5 +115,3 @@ Let bs x      /. ψ = error "type-level let";
 Note t x      /. ψ = Note t (x /. ψ);
 Constructor c /. ψ = Constructor c;
 ForAll v x    /. ψ = ForAll v (x /. Map.delete v ψ);
-
-fail = throwError;

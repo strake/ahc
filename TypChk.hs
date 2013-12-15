@@ -82,9 +82,11 @@ freshen t = r_svs <$> ask >>= \ svs ->
 
 findUnifier :: ∀ m b . (Ord b, Applicative m, ExcM (TFailure b) m, ReaderM (TR b) m) => [(Type b, Type b)] -> m (Map b (Type b));
 findUnifier [] = return Map.empty;
-findUnifier ((x, y):eqns) | x == y    = findUnifier eqns;
-findUnifier ((Ply f x, Ply g y):eqns) = findUnifier ((f, g):(x, y):eqns);
-findUnifier ((Ply f x, Var v):eqns)   = findUnifier ((Var v, Ply f x):eqns);
+findUnifier ((x, y):eqns) | x == y      = findUnifier eqns;
+findUnifier ((Tuple xs, Tuple ys):eqns)
+               | length xs == length ys = findUnifier (zip xs ys ++ eqns);
+findUnifier ((Ply f x, Ply g y):eqns)   = findUnifier ((f, g):(x, y):eqns);
+findUnifier ((Ply f x, Var v):eqns)     = findUnifier ((Var v, Ply f x):eqns);
 findUnifier ((Var v, x):eqns) | v ∉ freeVars x = Map.insert v x <$> findUnifier (join (***) (/. Map.singleton v x) <$> eqns);
 findUnifier ((x, y):eqns) = throw (TMismatch x y);
 

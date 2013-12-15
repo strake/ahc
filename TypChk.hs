@@ -111,6 +111,7 @@ boundVars (MatchNote _ m)    = boundVars m;
 
 (/.) :: (Ord b) => Expr b -> Map b (Expr b) -> Expr b;
 Var v         /. ψ = fromMaybe (Var v) (Map.lookup v ψ);
+Tuple xs      /. ψ = Tuple ((/. ψ) <$> xs);
 Λ cs          /. ψ = Λ ((\ (m, x) -> (m, x /. foldr Map.delete ψ (boundVars m))) <$> cs);
 Ply f x       /. ψ = Ply (f /. ψ) (x /. ψ);
 Let bs x      /. ψ = error "type-level let";

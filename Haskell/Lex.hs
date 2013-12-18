@@ -40,10 +40,6 @@ instance MonadT LexerT where {
 
 data ScanFailure = ScanFailMsg TextPos [Char];
 
-instance Show ScanFailure where {
-  show (ScanFailMsg p s) = "Scan Failure at " ++ show p ++ ": " ++ s;
-};
-
 failHere :: (Functor m, ExcM ScanFailure m, StateM TextPos m) => [Char] -> m a;
 failHere xs = get >>= \ p -> throw (ScanFailMsg p xs);
 

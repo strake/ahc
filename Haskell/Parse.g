@@ -314,10 +314,6 @@ type P = PT Id;
 
 data ParseFailure = ParseFailMsg [Char];
 
-instance Show ParseFailure where {
-  show (ParseFailMsg s) = "Parse Failure: " ++ s;
-};
-
 fufM = runExcT >=> either (throw ∘ \ (_, v :: Q [Char]) -> ParseFailMsg ("unknown fixity: " ++ show v)) return
 
 failHere = throw;

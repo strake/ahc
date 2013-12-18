@@ -27,7 +27,7 @@ import Util;
 import qualified Util.Map as Map;
 import Util.Monatron;
 
-data TFailure b = TUnboundVar b | TMismatch (Type b) (Type b) deriving (Show);
+data TFailure b = TUnboundVar b | TMismatch (Type b) (Type b);
 
 instance R TFailure where {
   type C TFailure b = Ord b;

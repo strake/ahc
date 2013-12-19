@@ -12,6 +12,7 @@ import Control.Monatron.AutoLift hiding (sequence);
 import Control.Monatron.Monad;
 import Control.Monatron.Transformer hiding (sequence);
 import Data.Either;
+import Data.Fixity;
 import Data.Eq.Unicode;
 import Data.Ord.Unicode;
 import Data.Core hiding (LInteger, LFloat, LChar, LChars);
@@ -19,7 +20,6 @@ import qualified Data.Core as P;
 import Data.Foldable;
 import Data.Traversable;
 import Data.Function (on);
-import Data.Haskell.Fixity;
 import Data.Haskell.NameSpace;
 import Data.Haskell.Token as T;
 import Data.Haskell.Qualified;
@@ -30,6 +30,7 @@ import Data.Set (Set);
 import qualified Data.Set as Set;
 import Data.Maybe;
 import Data.Stream;
+import Shunt;
 import Util;
 
 %{
@@ -80,41 +81,12 @@ Terminal	= LParenth as '(' | RParenth as ')'
 		;
 
 *expr		{ PT Fixed (Expr HsName) };
- expr		{ x }								: infixexpr { x };
-
-infixexpr	{ PT Fixed (Expr HsName) };
-infixexpr	{ let {
-		    go :: [Expr HsName] -> (Int, Expr HsName) -> Maybe [Expr HsName];
-		    go    xs  (0, y) = Just (y:xs);
-		    go (x:xs) (n, y) = go xs (n-1, Ply y x);
-		    go   _      _    = Nothing;
-		  }
-		  in foldlM go [] <$> x_ [] >>= \ xs ->
-		     case xs of {
-		       Just [x] -> return x;
-		       _        -> failHere $ ParseFailMsg "malformed infix expression";
-		     }
-		}								: infixexpr_ { x_ };
+ expr		{ runExcT >=> either (throw ∘ \ () -> ParseFailMsg "malformed infix expression") return $
+		  shuntEnd (lift ∘ xk) }					: infixexpr_ { xk };
 
 infixexpr_	{ [HsName] {- operator stack -} -> PT Fixed [(Arity, Expr HsName)] {- postfix-order output queue -} };
-infixexpr_	{ \ ops -> ask >>= \ fm ->
-		  -- Dijkstra shunt
-		  let {
-		    lookupFix :: HsName -> PT Fixed (Fixity, Rational);
-		    lookupFix v = maybe (failHere $ ParseFailMsg ("unknown fixity: " ++ show (snd v))) return $ Map.lookup v fm;
-
-		    go :: [HsName] -> PT Fixed [(Int, Expr HsName)];
-		    go [] = x_ (u:[]);
-		    go (v:vs) =
-		      lookupFix u >>= \ (f, m) ->
-		      lookupFix v >>= \ (g, n) ->
-		      m ≤ n || m ≡ n && f ≡ InfixR ? (:) (2, Var v) <$> go vs $ x_ (u:v:vs);
-
-		    u = (Just TermName, u');
-		  }
-		  in liftA2 (:) ((,) 0 <$> y) (go ops)
-		}								: infixexpr_ { x_ }, qop { u' }, λexpr { y };
-		{ \ ops -> (:((,) 2 ∘ Var <$> ops)) ∘ (,) 0 <$> x }		| λexpr { x };
+infixexpr_	{ fufM ∘ (lift y >>=) ∘ flip (flip (shuntGo u) (lift ∘ xk)) }	: infixexpr_ { xk }, qop { (,) (Just TermName) -> u }, λexpr { y };
+		{ fufM ∘ (lift x >>=) ∘ flip (lift ∘∘ shunt0) }			| λexpr { x };
 
 λexpr		{ PT Fixed (Expr HsName) };
 λexpr		{ x }								: fexpr { x };
@@ -269,15 +241,11 @@ some x { [x] }			: x { x };
 
 frown ts = failHere $ ParseFailMsg ("Parse Failure: " ++ show ts);
 
-type Arity = Int;
-
 type HsName = (Maybe NameSpace, Q [Char]);
 
 type PSt = Stream HsName;
 
-type FixMap = Map HsName (Fixity, Rational);
-
-type FixedT = ReaderT FixMap;
+type FixedT = ReaderT (FixMap HsName);
 
 type Fixed = FixedT Id;
 
@@ -290,6 +258,8 @@ data ParseFailure = ParseFailMsg [Char];
 instance Show ParseFailure where {
   show (ParseFailMsg s) = "Parse Failure: " ++ s;
 };
+
+fufM = runExcT >=> either (throw ∘ \ (_, v :: Q [Char]) -> ParseFailMsg ("unknown fixity: " ++ show v)) return
 
 failHere = throw;
 

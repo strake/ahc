@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeFamilies #-}
+
 module TypChk where
 
 import Prelude hiding (foldr, sequence);
@@ -16,6 +18,7 @@ import Data.Map (Map);
 import qualified Data.Map as Map;
 import Data.Maybe;
 import Data.Monoid;
+import Data.R;
 import Data.RFunctor;
 import Data.Set (Set);
 import qualified Data.Set as Set;
@@ -25,6 +28,15 @@ import qualified Util.Map as Map;
 import Util.Monatron;
 
 data TFailure b = TUnboundVar b | TMismatch (Type b) (Type b) deriving (Show);
+
+instance R TFailure where {
+  type C TFailure b = Ord b;
+};
+
+instance RFunctor TFailure where {
+  rfmap f (TUnboundVar v) = TUnboundVar (f v);
+  rfmap f (TMismatch s t) = TMismatch (rfmap f s) (rfmap f t);
+};
 
 data TR b = TR {
   r_env :: Map b (Type b),

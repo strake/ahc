@@ -2,7 +2,7 @@
 
 module Haskell.Parse where
 
-import Prelude hiding (foldr, sequence);
+import Prelude hiding (foldr, foldr1, sequence);
 import Control.Applicative;
 import Control.Arrow;
 import Control.Category.Unicode;
@@ -23,7 +23,7 @@ import Data.Haskell.Fixity;
 import Data.Haskell.NameSpace;
 import Data.Haskell.Token as T;
 import Data.Haskell.Qualified;
-import qualified Data.List as List;
+import qualified Data.List as List hiding (foldr1);
 import Data.Map (Map);
 import qualified Data.Map as Map;
 import Data.Set (Set);
@@ -192,8 +192,20 @@ gdecl		{ ∀ a .
 		  Either ([HsName], (Fixity, Rational)) (PT Fixed
 		                                         (Either
 		                                          ([HsName], Expr HsName) {- Type Signature -} a)) };
-gdecl		{ Left  ((,) (Just TermName) <$> vs, (fs, fromIntegral n)) }	: fixity { fs }, "<integer>" { n }, many qop { vs };
---		{ Right ((,) (Just TermName) <$> vs, t) }			| many qvar { vs }, "::", type { t };
+gdecl		{ Left ((,) (Just TermName) <$> vs, (fs, fromIntegral n)) }	: fixity { fs }, "<integer>" { n }, many qop { vs };
+		{ Right $ Left ∘ (,) ((,) (Just TermName) <$> vs) <$> t }	| sepBy termvar ',' { fmap (Q []) -> vs }, "::", type { t };
+
+type		{ PT Fixed (Type HsName) };
+type		{ t }								: btype { t };
+		{ liftA2 Ply (Ply (Constructor CArrow) <$> s) t }		| btype { s }, "->" , type { t };
+
+btype		{ PT Fixed (Type HsName) };
+btype		{ foldr1 Ply <$> ts }						: some atype { sequence -> ts };
+
+atype		{ PT Fixed (Type HsName) };
+atype		{ return $ Var (Just TypeName, v) }				: qvar { v };
+		{ stlist id Tuple <$> ts }					| '(', sepBy type ',' { sequence -> ts }, ')';
+		{ return $ Constructor CArrow }					| '(', "->", ')';
 
 match		{ PT Fixed (Match HsName) };
 match		{ m }								: lmatch { m };
@@ -248,6 +260,10 @@ fixity		{ InfixL }		: "infixl";
 sepEndBy x s { [a] } <- x { a }, s;
 sepEndBy x s { [] }		:;
              { xs ++ [x] }	| sepEndBy x s { xs }, x { x }, s;
+
+some x { [a] } <- x { a };
+some x { [x] }			: x { x };
+       { xs ++ [x] }		| some x { xs }, x { x };
 
 }%
 

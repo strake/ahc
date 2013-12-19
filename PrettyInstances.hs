@@ -41,7 +41,7 @@ instance Pretty ParseFailure where {
 
 instance Pretty b => Pretty (TFailure b) where {
   ppr (TUnboundVar v) = text "Unbound Variable: " <> ppr v;
-  ppr (TMismatch s t) = text "Type Mismatch: " <> ppr s <> text ", " <> ppr t;
+  ppr (TMismatch s t) = text "Type Mismatch: " <> ppr s <> text " ≁ " <> ppr t;
 };
 
 instance Pretty NameSpace where {

@@ -30,7 +30,7 @@ parse = runId ∘ runReaderT Map.empty ∘ evalStateT nameStream ∘ runExcT ∘
 check :: (Applicative m, Monad m, b ~ Parse.HsName) => Expr b -> m (Either (TFailure b) (Expr b));
 check = runExcT ∘ liftA2 (*>) (runReaderT r0 <<< findUnifier <=< fmap (w_eqn ∘ snd) ∘ evalStateT nameStream ∘ runWriterT ∘ infer) return;
 
-main = getContents >>= runExcT ∘ scan >>= either (error ∘ show ∘ ppr) check ∘ either (error ∘ show ∘ ppr) parse >>= print ∘ toScm ∘ rfmap (show ∘ snd) ∘ either (error ∘ show ∘ ppr) id;
+main = getContents >>= runExcT ∘ scan >>= either (error ∘ show ∘ ppr) check ∘ either (error ∘ show ∘ ppr) parse >>= print ∘ toScm ∘ rfmap (show ∘ snd) ∘ either (error ∘ show ∘ ppr ∘ rfmap snd) id;
 
 r0 = TR {
   r_env = Map.empty,

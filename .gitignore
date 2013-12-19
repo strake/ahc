@@ -1,0 +1,4 @@
+dist
+Haskell/Parse.hs
+*.hi
+*.o

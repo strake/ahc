@@ -1,10 +1,12 @@
 module Data.Haskell.Module where
 
 import Data.Core;
+import Data.Functor.Identity;
 import Data.Haskell.Qualified;
+import Data.Haskell.NameSpace;
 import Data.Map;
 
-data Module v b = Module [Import b] [Export b] (Map b (v (Q b)));
+data Module v b = Module [Import b] [Export b] (Map (Maybe NameSpace, Q b) (v (Maybe NameSpace, Q b)));
 
 data Import b = Import {
   imp_qual :: Bool,
@@ -13,8 +15,8 @@ data Import b = Import {
   imp_spec :: ImpSpec b
 };
 
-data Export b = ExportSymbol (PortSpec (Q b)) | ExportModule [b];
+data Export b = ExportSymbol (PortSpec Q b) | ExportModule [b];
 
-data ImpSpec b = Showing [PortSpec b] | Hiding [PortSpec b];
+data ImpSpec b = Showing [PortSpec Identity b] | Hiding [PortSpec Identity b];
 
-data PortSpec b = Port1 b | PortSome b [b] | PortAll b;
+data PortSpec q b = Port1 (q b) | PortSome (q b) [b] | PortAll (q b);

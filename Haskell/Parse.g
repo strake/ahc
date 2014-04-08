@@ -13,6 +13,7 @@ import Control.Monatron.Monad;
 import Control.Monatron.Transformer hiding (sequence);
 import Data.Either;
 import Data.Fixity;
+import Data.Functor.Identity;
 import Data.Eq.Unicode;
 import Data.Ord.Unicode;
 import Data.Core hiding (LInteger, LFloat, LChar, LChars);
@@ -20,6 +21,7 @@ import qualified Data.Core as P;
 import Data.Foldable;
 import Data.Traversable;
 import Data.Function (on);
+import Data.Haskell.Module;
 import Data.Haskell.NameSpace;
 import Data.Haskell.Token as T;
 import Data.Haskell.Qualified;
@@ -80,6 +82,48 @@ Terminal	= LParenth as '(' | RParenth as ')'
 		| VarName { [Char] } as "name" | VarSymbol { [Char] } as "symbol"
 		| TypName { [Char] } as "Name" | TypSymbol { [Char] } as "Symbol"
 		;
+
+*parseModule	{ ([[Char]], Map HsName (Fixity, Rational), PT Fixed (Module Expr [Char])) };
+ parseModule	{ (path, fm, Module imps exps <$> body) }	: "module", modName { path }, opt (bracket '(' (sepMaybeEndBy export ',') ')') { fromMaybe [] -> exps }, "where", modBody { (imps, fm, body) };
+
+modBody		{ ([Import [Char]], Map HsName (Fixity, Rational), PT Fixed (Map HsName (Expr HsName))) };
+modBody		{ (imps, fm, body) }				: sepEndBy impdecl ';' { imps }, decls { (fm, body) };
+		{ (imps, Map.empty, return Map.empty) }		| sepBy    impdecl ';' { imps };
+
+export		{ Export [Char] };
+export		{ ExportSymbol (Port1 v) }			: qvar { v };
+		{ ExportSymbol (PortSome v vs) }		| qtypevar { v }, '(', sepMaybeEndBy var ',' { vs }, ')';
+		{ ExportSymbol (PortAll v) }			| qtypevar { v }, '(', "..", ')';
+		{ ExportModule path }				| "module", modName { path };
+
+impdecl		{ Import [Char] };
+impdecl		{ Import {
+		    imp_qual  = qual,
+		    imp_path  = path,
+		    imp_alias = alias,
+		    imp_spec  = spec
+		  } }						: "import", opt qual { maybe False (pure True) -> qual }, modName { path }, opt alias { alias }, impspec { spec };
+
+qual		{ () };
+qual		{ () }						: VarName { "qualified" };
+
+alias		{ [[Char]] };
+alias		{ path }					: VarName { "as" }, modName { path };
+
+impspec		{ ImpSpec [Char] };
+impspec		{ Hiding [] }					:;
+		{ (case hiding of {
+		     Just _ -> Hiding;
+		     _      -> Showing;
+                   }) imps }					| opt hiding { hiding }, '(', sepMaybeEndBy import ',' { imps }, ')';
+
+hiding		{ () };
+hiding		{ () }						: VarName { "hiding" };
+
+import		{ PortSpec Identity [Char] };
+import		{ Port1 v }					: var { Identity -> v };
+		{ PortSome v vs }				| typevar { Identity -> v }, '(', sepMaybeEndBy var ',' { vs }, ')';
+		{ PortAll v }					| typevar { Identity -> v }, '(', "..", ')';
 
 *expr		{ PT Fixed (Expr HsName) };
  expr		{ runExcT >=> either (throw ∘ \ () -> ParseFailMsg "malformed infix expression") return $

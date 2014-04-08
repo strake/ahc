@@ -32,9 +32,9 @@ infixr 3 <&&>;
 (<&&>) :: Applicative p => p Bool -> p Bool -> p Bool;
 (<&&>) = liftA2 (&&);
 
-list :: (a -> [a] -> b) -> b -> [a] -> b;
-list f y []     = y;
-list f y (x:xs) = f x xs;
+list :: b -> (a -> [a] -> b) -> [a] -> b;
+list y f []     = y;
+list y f (x:xs) = f x xs;
 
 infix 1 ?;
 (?) :: Bool -> a -> a -> a;
@@ -61,7 +61,7 @@ distribR :: Functor v => a -> v b -> v (a, b);
 distribR = distribRWith (,);
 
 factorizeLBy :: (a -> a -> Bool) -> [(a, b)] -> [(a, [b])];
-factorizeLBy (==) = list (\ (u, v) -> partition ((== u) ∘ fst) >>> fmap snd & (,) u *** factorizeLBy (==) >>> uncurry (:)) [];
+factorizeLBy (==) = list [] (\ (u, v) -> partition ((== u) ∘ fst) >>> fmap snd & (,) u *** factorizeLBy (==) >>> uncurry (:));
 
 factorizeRBy :: (b -> b -> Bool) -> [(a, b)] -> [([a], b)];
 factorizeRBy (==) = fmap swap ∘ factorizeLBy (==) ∘ fmap swap;

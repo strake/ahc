@@ -64,7 +64,7 @@ infer (Note t x) = infer x >>= unify t;
 infer (Var v)    = Map.lookup v ∘ r_env <$> ask >>= maybe (throw (TUnboundVar v)) freshen;
 infer (Tuple xs) = Tuple <$> traverse infer xs;
 infer (Λ cs)     = traverse (\ (m, x) -> inferM m >>= \ (env, svs, t) ->
-                             (t -->) <$> local ((r_onEnv $ Map.union env) ∘ (r_onSvs $ Set.union svs)) (infer x)) cs >>= list (foldrM unify) (error "empty λ");
+                             (t -->) <$> local ((r_onEnv $ Map.union env) ∘ (r_onSvs $ Set.union svs)) (infer x)) cs >>= list (error "empty λ") (foldrM unify);
 infer (Ply f x)  = liftA2 (,) (infer f) (liftA2 (-->) (infer x) (Var <$> gen)) >>= uncurry unify;
 infer (Let bm x) = traverse (const gen) bm >>= \ fvm {- fresh variable map -} ->
                    local (r_onEnv $ Map.union (Var <$> fvm)) $

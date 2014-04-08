@@ -32,6 +32,7 @@ import Data.Maybe;
 import Data.Stream;
 import Shunt;
 import Util;
+import Util.Map;
 
 %{
 
@@ -113,9 +114,7 @@ aexpr		{ return $ Var (Just TermName, v) }				: qvar { v };
 decls		{ (Map HsName (Fixity, Rational), PT Fixed (Map HsName (Expr HsName))) };
 decls		{% let {
 		     --mkUniqMapOf :: (Ord k, Show k, MonadFailure ParseFailure m) => [Char] -> [(k, a)] -> m (Map k a);
-		     mkUniqMapOf s kvs | ks@(_:_) <- fmap fst & List.sort & List.group & List.filter ((> [()]) ∘ (() <$)) $
-		                                     kvs = failHere $ ParseFailMsg ("Multique " ++ s ++ " of " ++ (List.intercalate ", " ∘ fmap show) ks)
-		                       | otherwise = return $ Map.fromList kvs;
+		     mkUniqMapOf s kvs = fromListUniqM (\ ks -> failHere $ ParseFailMsg ("Multique " ++ s ++ " of " ++ (List.intercalate ", " ∘ fmap show) ks)) kvs;
 
 		     -- include type signatures in term definitions
 		     -- check for multique signatures and signatures with no term defined

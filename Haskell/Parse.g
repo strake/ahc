@@ -127,12 +127,7 @@ decls		{% let {
 
 		     fs :: [(HsName, (Fixity, Rational))];
 		     f_tds :: PT Fixed ([(HsName, Expr HsName)], [(HsName, Expr HsName)]);
-		     (fs, f_tds) = let {
-		                     go :: ([β] -> c) -> [Either ([a], b) β] -> ([(a, b)], c);
-		                     go f = partitionEithers >>> x *** f;
-		                     
-		                     x = fmap (uncurry distribL) & join;
-		                   } in go (sequence & fmap (go x)) ds;
+		     (fs, f_tds) = partitionDecls ds;
 		   }
 		   in mkUniqMapOf "fixity declaration" fs >>= \ fm -> return ∘ (,) fm $
 		      local (Map.union fm) f_tds >>=
@@ -265,3 +260,12 @@ failHere = throw;
 stlist :: (a -> b) -> ([a] -> b) -> [a] -> b;
 stlist f g [x] = f x;
 stlist f g  xs = g xs;
+
+partitionDecls :: (Functor m, Monad m) => [Either ([a], b) (m (Either ([a1], b1) ([a2], b2)))] -> ([(a, b)], m ([(a1, b1)], [(a2, b2)]));
+partitionDecls =
+  let {
+    go :: ([d] -> c) -> [Either ([a], b) d] -> ([(a, b)], c);
+    go f = partitionEithers >>> x *** f;
+
+    x = fmap (uncurry distribL) & join;
+  } in go (sequence & fmap (go x));

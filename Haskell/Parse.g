@@ -189,28 +189,40 @@ amatch		{ return $ MatchAny }						: "_";
 as		{ PT Fixed (Match HsName) };
 as		{ m }							: "@", amatch { m };
 
-qop		{ Q [Char] };
-qop		{ v }			: q "symbol" { v };
-		{ v }			| q "Symbol" { v };
-		{ v }			| '`', q "name" { v }, '`';
-		{ v }			| '`', q "Name" { v }, '`';
-
 qvar		{ Q [Char] };
-qvar		{ v }			: q "name" { v };
-		{ v }			| q "Name" { v };
-		{ v }			| '(', q "symbol" { v }, ')';
-		{ v }			| '(', q "Symbol" { v }, ')';
+qvar		{ v }			: prefixNota (either (q "name") (q "Name")) (either (q "symbol") (q "Symbol")) { either id id -> v };
+
+qtypevar	{ Q [Char] };
+qtypevar	{ v }			: prefixNota (q "Name") (q "Symbol") { v };
+
+qop		{ Q [Char] };
+qop		{ v }			: infixNota (either (q "name") (q "Name")) (either (q "symbol") (q "Symbol")) { either id id -> v };
+
+var		{ [Char] };
+var		{ v }			: either termvar typevar { either id id -> v };
 
 termvar		{ [Char] };
-termvar		{ v }			: "name" { v };
-		{ v }			| '(', "symbol" { v }, ')';
+termvar		{ v }			: prefixNota "name" "symbol" { v };
+
+typevar		{ [Char] };
+typevar		{ v }			: prefixNota "Name" "Symbol" { v };
 
 termop		{ [Char] };
-termop		{ v }			: "symbol" { v };
-		{ v }			| '`', "name" { v }, '`';
+termop		{ v }			: infixNota "name" "symbol" { v };
 
 q x		{ Q [Char] }		<- x { [Char] };
-q x		{ Q ms n }		: sepBy "Name" "." { ms }, x { n };
+q x		{ Q ms n }		: modName { ms }, x { n };
+
+modName		{ [[Char]] };
+modName		{ ms }			: sepBy "Name" "." { ms };
+
+prefixNota x y	{ b } <- x { b }, y { b };
+prefixNota x y	{ v }			: x { v };
+		{ v }			| '(', y { v }, ')';
+
+infixNota x y	{ b } <- x { b }, y { b };
+infixNota x y	{ v }			: y { v };
+		{ v }			| '`', x { v }, '`';
 
 literal		{ Literal };
 literal		{ P.LInteger n  }	: "<integer>"		{ n  };
@@ -223,13 +235,22 @@ fixity		{ InfixL }		: "infixl";
 		{ InfixR }		| "infixr";
 		{ Infix  }		| "infix";
 
+either x y { Either a b } <- x { a }, y { b };
+either x y { Left  x }	: x { x };
+           { Right y }	| y { y };
+
 sepEndBy x s { [a] } <- x { a }, s;
-sepEndBy x s { [] }		:;
-             { xs ++ [x] }	| sepEndBy x s { xs }, x { x }, s;
+sepEndBy x s { [] }	:;
+             { xs }	| sepBy x s { xs }, s;
+
+sepMaybeEndBy x s { [a] } <- x { a }, s;
+sepMaybeEndBy x s { xs }	: sepBy x s { xs }, opt s;
 
 some x { [a] } <- x { a };
-some x { [x] }			: x { x };
-       { xs ++ [x] }		| some x { xs }, x { x };
+some x { (x:xs) }		: x { x }, many x { xs };
+
+bracket l x r { a } <- l, x { a }, r;
+bracket l x r { x }	: l, x { x }, r;
 
 }%
 

@@ -2,7 +2,7 @@
 
 module Data.Core where
 
-import Prelude hiding (foldl);
+import Prelude hiding (foldl, foldr);
 import Control.Applicative;
 import Control.Arrow;
 import Control.Category.Unicode;
@@ -11,8 +11,11 @@ import Data.Foldable;
 import qualified Data.List as List;
 import qualified Data.Map  as Map;
 import Data.Map (Map);
+import Data.Maybe (fromMaybe);
 import Data.R;
 import Data.RFunctor;
+import qualified Data.Set as Set;
+import Data.Set (Set);
 
 type Type = Expr;
 
@@ -88,3 +91,32 @@ instance RFunctor Constructor where {
   φ `rfmap` CStar = CStar;
   φ `rfmap` CArrow = CArrow;
 };
+
+freeVars :: (Ord b) => Expr b -> Set b;
+freeVars (Literal _)     = Set.empty;
+freeVars (Tuple xs)      = Set.unions $ freeVars <$> xs;
+freeVars (Var v)         = Set.singleton v;
+freeVars (Λ cs)          = Set.unions $ (boundVars *** freeVars >>> uncurry (flip Set.difference)) <$> cs;
+freeVars (Ply f x)       = freeVars f `Set.union` freeVars x;
+freeVars (Note _ x)      = freeVars x;
+freeVars (Constructor _) = Set.empty;
+freeVars (ForAll v x)    = Set.delete v (freeVars x);
+
+boundVars :: (Ord b) => Match b -> Set b;
+boundVars (MatchStruct c ms) = Set.unions $ boundVars <$> ms;
+boundVars (MatchTuple ms)    = Set.unions $ boundVars <$> ms;
+boundVars (MatchLiteral _)   = Set.empty;
+boundVars (MatchAny)         = Set.empty;
+boundVars (MatchLazy m)      = boundVars m;
+boundVars (MatchAs b m)      = Set.insert b (boundVars m);
+boundVars (MatchNote _ m)    = boundVars m;
+
+(/.) :: (Ord b) => Expr b -> Map b (Expr b) -> Expr b;
+Var v         /. ψ = fromMaybe (Var v) (Map.lookup v ψ);
+Tuple xs      /. ψ = Tuple ((/. ψ) <$> xs);
+Λ cs          /. ψ = Λ ((\ (m, x) -> (m, x /. foldr Map.delete ψ (boundVars m))) <$> cs);
+Ply f x       /. ψ = Ply (f /. ψ) (x /. ψ);
+Let bs x      /. ψ = (\ ψ' -> Let ((/. ψ') <$> bs) (x /. ψ')) $ Map.difference ψ bs;
+Note t x      /. ψ = Note t (x /. ψ);
+Constructor c /. ψ = Constructor c;
+ForAll v x    /. ψ = ForAll v (x /. Map.delete v ψ);
